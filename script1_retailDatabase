@@ -1,0 +1,1106 @@
+-- -----------------------------------------------------
+-- SCRIPT 1
+-- -----------------------------------------------------
+
+-- -----------------------------------------------------
+-- 1. create the database and tables
+-- -----------------------------------------------------
+
+-- -----------------------------------------------------
+-- Drop the 'retail' database/schema
+-- -----------------------------------------------------
+
+DROP SCHEMA IF EXISTS retail;
+-- -----------------------------------------------------
+-- Create 'retail' database/schema and use this database
+-- -----------------------------------------------------
+
+
+CREATE SCHEMA IF NOT EXISTS retail;
+
+USE retail;
+
+-- -----------------------------------------------------
+-- Create table product
+-- -----------------------------------------------------
+
+CREATE TABLE product (
+    productID INT NOT NULL,
+    productName VARCHAR(50) NOT NULL,
+    size VARCHAR(10),
+    costPrice DECIMAL(5, 2) NOT NULL,
+    salePrice DECIMAL(5, 2) NOT NULL,
+    colour VARCHAR(20),
+    -- constraint
+    CHECK (salePrice >= costPrice), -- salePrice is not lower than costPrice
+    -- PK and FK
+    PRIMARY KEY (productID)
+);
+
+-- subtypes of product table (clothes, shoes)
+
+-- Create clothes Table
+CREATE TABLE clothes (
+    productID INT NOT NULL,
+    gender VARCHAR(20) NOT NULL,
+    catagory VARCHAR(20) NOT NULL,
+    season VARCHAR(6) NOT NULL,
+    -- constraint on season -- can only be AW'YEAR' or SS'YEAR' (e.g.AW2022)
+    CONSTRAINT chk_season_format CHECK (season REGEXP '^[A-Z]{2}[0-9]{4}$'),
+    -- PK and FK
+    PRIMARY KEY (productID),
+    FOREIGN KEY (productID) REFERENCES product(productID) 
+    ON UPDATE CASCADE ON DELETE CASCADE
+);
+
+-- Create shoes Table
+CREATE TABLE shoes (
+    productID INT NOT NULL,
+    brand VARCHAR(50) NOT NULL,
+    -- PK and FK
+    PRIMARY KEY (productID),
+    FOREIGN KEY (productID) REFERENCES product(productID) 
+    ON UPDATE CASCADE ON DELETE CASCADE
+);
+
+-- -----------------------------------------------------
+-- Create table venue
+-- -----------------------------------------------------
+
+CREATE TABLE venue (
+    venueID TINYINT UNSIGNED NOT NULL, -- 0 TO 255, COLUMN WIDTH SHOWS 3
+    venueName VARCHAR(50) NOT NULL,
+    phone VARCHAR(20),
+    street VARCHAR(200),
+    town VARCHAR(100),
+    postcode VARCHAR(20),
+    managerEmpNum INT, 
+    -- constraint
+     CHECK (phone REGEXP '^[0-9]+$'), -- phone contains only numeric values
+    -- PK and FK
+    PRIMARY KEY (venueID)
+);
+
+-- -----------------------------------------------------
+-- Create table heldStock
+-- -----------------------------------------------------
+
+-- This tables connects product and venue (*:* relationship)
+-- how many of each products are held in each venue
+CREATE TABLE heldStock (
+    productID INT NOT NULL,
+	venueID TINYINT UNSIGNED NOT NULL,
+    quantity INT NOT NULL, -- records quantity of stock in venue
+    -- PK and FK
+    PRIMARY KEY (productID, venueID),
+    FOREIGN KEY (productID) REFERENCES product(productID)
+    ON UPDATE CASCADE 
+    ON DELETE NO ACTION, -- when deleted stock is stll held
+    FOREIGN KEY (venueID) REFERENCES venue(venueID)
+    ON UPDATE CASCADE 
+    ON DELETE NO ACTION
+);
+
+-- -----------------------------------------------------
+-- Create table employee 
+-- -----------------------------------------------------
+
+CREATE TABLE employee (
+    empNum INT AUTO_INCREMENT NOT NULL,
+    contractHrs TINYINT UNSIGNED NOT NULL, -- 0 TO 255, COLUMN WIDTH SHOWS 3
+    employeeTitle VARCHAR(30) NOT NULL,
+    rateOfPay DECIMAL(5, 2) NOT NULL,
+	venueID TINYINT UNSIGNED NOT NULL,
+    managerEmpNum INT, 
+    -- PK and FK
+    PRIMARY KEY (empNum),
+    FOREIGN KEY (venueID) REFERENCES venue(venueID)
+    ON UPDATE CASCADE ON DELETE CASCADE,
+    FOREIGN KEY (managerEmpNum) REFERENCES employee(empNum)
+    ON UPDATE CASCADE ON DELETE CASCADE,
+    -- contraint
+    CHECK (contractHrs BETWEEN 9 AND 38), -- employee hrs can only be between these hours
+    CHECK (rateOfPay BETWEEN 11.70 AND 25.00) -- min to max pay per hour
+);
+
+-- Create employeeDetails Table
+-- created for normalisation of employee table
+
+CREATE TABLE employeeDetails (
+	empNum INT NOT NULL,
+    PPS VARCHAR(20) NOT NULL,
+    fname VARCHAR(30) NOT NULL,
+    lname VARCHAR(30) NOT NULL,
+    email VARCHAR(100) NOT NULL,
+    phone VARCHAR(20) NOT NULL,
+    IBAN VARCHAR(30) NOT NULL,
+    -- PK and FK
+    PRIMARY KEY (empNum),
+    FOREIGN KEY (empNum) REFERENCES employee(empNum)
+);
+
+-- Subtypes for employee table (partTime fullTime) 
+
+-- Create PartTime Table
+CREATE TABLE partTime (
+    empNum INT,
+    hoursWorked TINYINT UNSIGNED NOT NULL,
+    hoursOwed TINYINT UNSIGNED NOT NULL,
+    -- PK and FK
+    PRIMARY KEY (empNum),
+    FOREIGN KEY (empNum) REFERENCES employee(empNum)
+);
+
+-- Create FullTime Table
+CREATE TABLE fullTime (
+    empNum INT,
+    daysOwed TINYINT UNSIGNED NOT NULL,
+    -- PK and FK
+    PRIMARY KEY (empNum),
+    FOREIGN KEY (empNum) REFERENCES employee(empNum)
+);
+
+-- FK for venue added after creating employee table
+ALTER TABLE venue
+ADD CONSTRAINT fk_managerEmpNum
+FOREIGN KEY (managerEmpNum) REFERENCES employee(empNum)
+ON UPDATE CASCADE ON DELETE CASCADE;
+
+-- -----------------------------------------------------
+-- Create table loyaltyCard 
+-- -----------------------------------------------------
+
+-- Create LoyaltyCard Table
+CREATE TABLE loyaltyCard (
+    lcNum INT AUTO_INCREMENT NOT NULL,
+    fname VARCHAR(50), -- customer can opt out on giving personal info
+    lname VARCHAR(50),
+    email VARCHAR(100),
+    empNum INT NOT NULL,
+    registrationDate date NOT NULL,
+    spent DECIMAL(5, 2) DEFAULT 0.00,
+    points DECIMAL(5, 2) DEFAULT 0.00, -- Set default value to 0.00,
+    -- PK and FK
+    PRIMARY KEY (lcNum),
+    FOREIGN KEY (empNum) REFERENCES employee(empNum)
+);
+
+-- -----------------------------------------------------
+-- Create table transactions 
+-- -----------------------------------------------------
+
+CREATE TABLE transactions (
+    transNum INT AUTO_INCREMENT NOT NULL,
+    date DATE NOT NULL,
+    total DECIMAL(10, 2) NOT NULL,
+    venueID TINYINT UNSIGNED NOT NULL,
+    empNum INT NOT NULL,
+    lcNum INT, -- not every transaction can relate to a loyaltyCard
+    -- PK and FK
+    PRIMARY KEY (transNum),
+    FOREIGN KEY (venueID) REFERENCES venue(venueID),
+    FOREIGN KEY (empNum) REFERENCES employee(empNum),
+    FOREIGN KEY (lcNum) REFERENCES loyaltyCard(lcNum),
+     -- Additional constraints to ensure existence in respective tables
+    CONSTRAINT fk_venue_existence FOREIGN KEY (venueID) REFERENCES venue(venueID),
+    CONSTRAINT fk_employee_existence FOREIGN KEY (empNum) REFERENCES employee(empNum),
+    CONSTRAINT fk_loyaltyCard_existence FOREIGN KEY (lcNum) REFERENCES loyaltyCard(lcNum)
+);
+
+-- Create transactionDetails Table
+-- one transaction can have multiple products associated
+CREATE TABLE transactionDetails (
+    productID INT NOT NULL,
+    transID INT NOT NULL,
+    prodQuantity INT NOT NULL,
+    -- PK and FK
+    PRIMARY KEY (productID, transID),
+    FOREIGN KEY (productID) REFERENCES product(productID),
+    FOREIGN KEY (transID) REFERENCES transactions(transNum)
+);
+
+-- Create paymentTypes Table
+-- multivariable attribute of transaction table
+CREATE TABLE paymentTypes (
+    cash DECIMAL(10, 2) NOT NULL,
+    card DECIMAL(10, 2) NOT NULL,
+    giftcard DECIMAL(10, 2) NOT NULL,
+    transNum INT NOT NULL,
+    -- FK
+    FOREIGN KEY (transNum) REFERENCES transactions(transNum)
+    );
+
+-- Create GiftCard Table
+-- weak entity
+CREATE TABLE giftCard (
+    transNum INT NOT NULL,
+    amount DECIMAL(10, 2),
+    -- PK and FK (NO PK because weak entity)
+    FOREIGN KEY (transNum) REFERENCES transactions(transNum)
+);
+
+-- -----------------------------------------------------
+-- 4. create triggers
+-- -----------------------------------------------------
+
+-- when a new employee is added they are put into the 
+-- fulltime or parttime table based on contract hours
+DELIMITER //
+
+CREATE TRIGGER insert_employee_subtype_trigger
+AFTER INSERT ON employee
+FOR EACH ROW
+BEGIN
+    -- Check contractHrs and insert into appropriate subtype table
+    IF NEW.contractHrs < 20 THEN
+        INSERT INTO partTime (empNum, hoursWorked, hoursOwed) VALUES (NEW.empNum, 0, 0);
+    ELSE
+        INSERT INTO fullTime (empNum, daysOwed) VALUES (NEW.empNum, 20);
+    END IF;
+END;
+
+//
+DELIMITER ;
+
+-- when hoursWorked is updated, it is added to previous hours worked
+DELIMITER //
+CREATE TRIGGER update_hoursWorked_trigger
+BEFORE UPDATE ON partTime
+FOR EACH ROW
+BEGIN
+-- adds the new hours worked to the old hours worked
+    SET NEW.hoursWorked = NEW.hoursWorked + OLD.hoursWorked;
+	SET NEW.hoursOwed = ROUND(NEW.hoursWorked * 0.08, 2); -- rounds to two decimal places
+END;
+//
+DELIMITER ;
+
+-- if transaction is linked to a LoyaltyCard it will be added
+-- to the LoyaltyCard previous spend (what amount customer has spent)
+DELIMITER //
+
+CREATE TRIGGER loyalty_points_after_transaction
+AFTER INSERT ON transactions
+FOR EACH ROW
+BEGIN
+    -- Check if lcNum is not null
+    IF NEW.lcNum IS NOT NULL THEN
+        -- Update the existing record in loyaltyCard
+        UPDATE loyaltyCard
+        SET spent = NEW.total
+        WHERE lcNum = NEW.lcNum;
+    END IF;
+END;
+
+//
+DELIMITER ;
+
+-- customers get 20% back on each purchase with an LC
+DELIMITER //
+CREATE TRIGGER update_lc_points
+BEFORE UPDATE ON loyaltyCard
+FOR EACH ROW
+BEGIN
+-- adds the new points to the old points
+    SET NEW.points = NEW.points + OLD.points;
+	SET NEW.points = ROUND(NEW.spent * 0.02, 2); -- rounds to two decimal places
+END;
+//
+DELIMITER ;
+
+-- Trigger to ensure transactions total and paymentTypes to allow it to go through
+ DELIMITER //
+CREATE TRIGGER before_paymentTypes_insert
+ BEFORE INSERT ON paymentTypes
+FOR EACH ROW
+BEGIN
+    DECLARE transactions_total DECIMAL(10, 2);
+
+    -- Get the total from the corresponding transaction
+    SELECT total INTO transactions_total
+    FROM transactions
+    WHERE transNum = NEW.transNum;
+
+    -- Check the equality condition
+   IF NOT ((NEW.cash + NEW.card + NEW.giftcard) = transactions_total) THEN
+        SIGNAL SQLSTATE '45000'
+        SET MESSAGE_TEXT = 'Total in paymentTypes must equal total in transactions';
+    END IF;
+ END;
+ //
+ DELIMITER ;
+
+
+-- -----------------------------------------------------
+-- 2. populate the tables with records
+-- -----------------------------------------------------
+
+INSERT INTO product VALUES
+('10000', 'Emily T-Shirt','XS', 9.99, 14.99, 'White'),
+('10001', 'Emily T-Shirt','S', 9.99, 14.99, 'White'),
+('10002', 'Emily T-Shirt','M', 9.99, 14.99, 'White'),
+('10003', 'Emily T-Shirt','L', 9.99, 14.99, 'White'),
+('10004', 'Emily T-Shirt','XL', 9.99, 14.99, 'White'),
+('10005', 'Emily T-Shirt','XS', 9.99, 14.99, 'Red'),
+('10006', 'Emily T-Shirt','S', 9.99, 14.99, 'Red'),
+('10007', 'Emily T-Shirt','M', 9.99, 14.99, 'Red'),
+('10008', 'Emily T-Shirt','L', 9.99, 14.99, 'Red'),
+('10009', 'Emily T-Shirt','XL', 9.99, 14.99, 'Red'),
+('10010', 'Emily T-Shirt','XS', 9.99, 14.99, 'Blue'),
+('10011', 'Emily T-Shirt','S', 9.99, 14.99, 'Blue'),
+('10012', 'Emily T-Shirt','M', 9.99, 14.99, 'Blue'),
+('10013', 'Emily T-Shirt','L', 9.99, 14.99, 'Blue'),
+('10014', 'Emily T-Shirt','XL', 9.99, 14.99, 'Blue'),
+('10015', 'Maya Jean','XS', 19.99, 34.99, 'Black'),
+('10016', 'Maya Jean','S', 19.99, 34.99, 'Black'),
+('10017', 'Maya Jean','M', 19.99, 34.99, 'Black'),
+('10018', 'Maya Jean','L', 19.99, 34.99, 'Black'),
+('10019', 'Maya Jean','XL', 19.99, 34.99, 'Black'),
+('10020', 'Maya Jean','XS', 19.99, 34.99, 'Blue'),
+('10021', 'Maya Jean','S', 19.99, 34.99, 'Blue'),
+('10022', 'Maya Jean','M', 19.99, 34.99, 'Blue'),
+('10023', 'Maya Jean','L', 19.99, 34.99, 'Blue'),
+('10024', 'Maya Jean','XL', 19.99, 34.99, 'Blue'),
+('10025', 'John Tee','XS', 9.99, 14.99, 'Black'),
+('10026', 'John Tee','S', 9.99, 14.99, 'Black'),
+('10027', 'John Tee','M', 9.99, 14.99, 'Black'),
+('10028', 'John Tee','L', 9.99, 14.99, 'Black'),
+('10029', 'John Tee','XL', 9.99, 14.99, 'Black'),
+('10030', 'John Tee','XS', 9.99, 14.99, 'Blue'),
+('10031', 'John Tee','S', 9.99, 14.99, 'Blue'),
+('10032', 'John Tee','M', 9.99, 14.99, 'Blue'),
+('10033', 'John Tee','L', 9.99, 14.99, 'Blue'),
+('10034', 'John Tee','XL', 9.99, 14.99, 'Blue'),
+('10035', 'NB 502','3', 39.99, 94.99, 'Blue'),
+('10036', 'NB 502','4', 39.99, 94.99, 'Blue'),
+('10037', 'NB 502','5', 39.99, 94.99, 'Blue'),
+('10038', 'NB 502','6', 39.99, 94.99, 'Blue'),
+('10039', 'NB 502','7', 39.99, 94.99, 'Blue'),
+('10040', 'NB 502','8', 39.99, 94.99, 'Blue'),
+('10041', 'NB 502','9', 39.99, 94.99, 'Blue'),
+('10042', 'NB 502','10', 39.99, 94.99, 'Blue'),
+('10043', 'Airforces','3', 50.99, 104.99, 'White'),
+('10044', 'Airforces','4', 50.99, 104.99, 'White'),
+('10045', 'Airforces','5', 50.99, 104.99, 'White'),
+('10046', 'Airforces','6', 50.99, 104.99, 'White'),
+('10047', 'Airforces','7', 50.99, 104.99, 'White'),
+('10048', 'Airforces','8', 50.99, 104.99, 'White'),
+('10049', 'Airforces','9', 50.99, 104.99, 'White'),
+('10050', 'Airforces','10', 50.99, 104.99, 'White')
+;
+
+INSERT INTO clothes VALUES
+('10000', "Ladies", "T-Shirt", "SS2023"),
+('10001', "Ladies", "T-Shirt", "SS2023"),
+('10002', "Ladies", "T-Shirt", "SS2023"),
+('10003', "Ladies", "T-Shirt", "SS2023"),
+('10004', "Ladies", "T-Shirt", "SS2023"),
+('10005', "Ladies", "T-Shirt", "SS2023"),
+('10006', "Ladies", "T-Shirt", "SS2023"),
+('10007', "Ladies", "T-Shirt", "SS2023"),
+('10008', "Ladies", "T-Shirt", "SS2023"),
+('10009', "Ladies", "T-Shirt", "SS2023"),
+('10010', "Ladies", "T-Shirt", "SS2023"),
+('10011', "Ladies", "T-Shirt", "SS2023"),
+('10012', "Ladies", "T-Shirt", "SS2023"),
+('10013', "Ladies", "T-Shirt", "SS2023"),
+('10014', "Ladies", "T-Shirt", "SS2023"),
+('10015', "Ladies", "Pants", "AW2023"),
+('10016', "Ladies", "Pants", "AW2023"),
+('10017', "Ladies", "Pants", "AW2023"),
+('10018', "Ladies", "Pants", "AW2023"),
+('10019', "Ladies", "Pants", "AW2023"),
+('10020', "Ladies", "Pants", "AW2023"),
+('10021', "Ladies", "Pants", "AW2023"),
+('10022', "Ladies", "Pants", "AW2023"),
+('10023', "Ladies", "Pants", "AW2023"),
+('10024', "Ladies", "Pants", "AW2023"),
+('10025', "Mens", "T-Shirt", "SS2023"),
+('10026', "Mens", "T-Shirt", "SS2023"),
+('10027', "Mens", "T-Shirt", "SS2023"),
+('10028', "Mens", "T-Shirt", "SS2023"),
+('10029', "Mens", "T-Shirt", "SS2023"),
+('10030', "Mens", "T-Shirt", "SS2023"),
+('10031', "Mens", "T-Shirt", "SS2023"),
+('10032', "Mens", "T-Shirt", "SS2023"),
+('10033', "Mens", "T-Shirt", "SS2023"),
+('10034', "Mens", "T-Shirt", "SS2023");
+
+
+INSERT INTO shoes VALUES
+('10035', 'New Balance'),
+('10036', 'New Balance'),
+('10037', 'New Balance'),
+('10038', 'New Balance'),
+('10039', 'New Balance'),
+('10040', 'New Balance'),
+('10041', 'New Balance'),
+('10042', 'New Balance'),
+('10043', 'Nike'),
+('10044', 'Nike'),
+('10045', 'Nike'),
+('10046', 'Nike'),
+('10047', 'Nike'),
+('10048', 'Nike'),
+('10049', 'Nike'),
+('10050', 'Nike');
+
+INSERT INTO venue VALUES
+(1, "Diesel Galway", "091222444","1 Fake Street",'Galway','H91567987', NULL),
+(2, "Diesel Dublin", "012345678", "2 Shamrock Lane", "Dublin", "D123456", NULL),
+(3, "Diesel Cork", "087654321", "3 Green Square", "Cork", "C789012", NULL),
+(4, "Diesel Limerick", "086753159", "4 Clover Street", "Limerick", "L456789", NULL),
+(5, "Diesel Belfast", "098765432", "5 St. Patrick's Road", "Belfast", "B987654", NULL),
+(6, "Diesel Waterford", "076543210", "6 River View", "Waterford", "W654321", NULL),
+(7, "Diesel Derry", "091234567", "7 Peace Avenue", "Derry", "D234567", NULL),
+(8, "Diesel Kilkenny", "089012345", "8 Castle Lane", "Kilkenny", "K890123", NULL);
+
+
+
+INSERT INTO employee (contractHrs,employeeTitle,rateOfPay,venueID,managerEmpNum) VALUES
+(38, 'manager', 25.00, 1, NULL),
+(20, 'supervisor', 14.00, 1, 1),
+(9, 'sales assistant', 11.90, 1, 1),
+(38, 'manager', 25.00, 2, NULL),
+(20, 'supervisor', 14.00, 2, 4),
+(9, 'sales assistant', 11.90, 2, 4),
+(9, 'sales assistant', 12.00, 2, 4),
+(38, 'manager', 25.00, 3, NULL),
+(20, 'supervisor', 14.00, 3, 8),
+(9, 'sales assistant', 11.90, 3, 8),
+(9, 'sales assistant', 12.00, 3, 8),
+(38, 'manager', 25.00, 4, NULL),
+(20, 'supervisor', 14.00, 4, 12),
+(9, 'sales assistant', 11.90, 4, 12),
+(9, 'sales assistant', 12.00, 4, 12),
+(38, 'manager', 25.00, 5, NULL),
+(20, 'supervisor', 14.00, 5, 16),
+(9, 'sales assistant', 11.90, 5, 16),
+(9, 'sales assistant', 12.00, 5, 16),
+(38, 'manager', 25.00, 6, NULL),
+(20, 'supervisor', 14.00, 6, 20),
+(9, 'sales assistant', 11.90, 6, 20),
+(9, 'sales assistant', 12.00, 6, 20),
+(38, 'manager', 25.00, 7, NULL),
+(20, 'supervisor', 14.00, 7, 24),
+(9, 'sales assistant', 11.90, 7, 24),
+(9, 'sales assistant', 12.00, 7, 24),
+(38, 'manager', 25.00, 8, NULL),
+(20, 'supervisor', 14.00, 8, 28),
+(9, 'sales assistant', 11.90, 8, 28),
+(9, 'sales assistant', 12.00, 8, 28);
+
+-- assign mangers to venues
+UPDATE venue SET managerEmpNum = 
+  CASE venueID
+    WHEN 1 THEN 1
+    WHEN 2 THEN 4
+    WHEN 3 THEN 8
+    WHEN 4 THEN 12
+    WHEN 5 THEN 16
+    WHEN 6 THEN 20
+    WHEN 7 THEN 24
+    WHEN 8 THEN 28
+  END;
+
+INSERT INTO employeeDetails (empNum, PPS, fname, lname, email, phone, IBAN) VALUES
+(1, '1234567T', 'John', 'Smith', 'john.smith@example.com', '0871234567', 'IE29AIBK93115212345678'),
+(2, '2345678T', 'Alice', 'Johnson', 'alice.johnson@example.com', '0862345678', 'IE29BOFI93115212345678'),
+(3, '3456789T', 'David', 'Williams', 'david.williams@example.com', '0853456789', 'IE29ULSB93115212345678'),
+(4, '4567890T', 'Emma', 'Brown', 'emma.brown@example.com', '0834567890', 'IE29BOFI93115212345678'),
+(5, '5678901T', 'James', 'Jones', 'james.jones@example.com', '0895678901', 'IE29AIBK93115212345678'),
+(6, '6789012T', 'Olivia', 'Garcia', 'olivia.garcia@example.com', '0876789012', 'IE29ULSB93115212345678'),
+(7, '7890123T', 'Noah', 'Martinez', 'noah.martinez@example.com', '0867890123', 'IE29BOFI93115212345678'),
+(8, '8901234T', 'Sophia', 'Robinson', 'sophia.robinson@example.com', '0858901234', 'IE29ULSB93115212345678'),
+(9, '9012345T', 'Liam', 'Clark', 'liam.clark@example.com', '0839012345', 'IE29BOFI93115212345678'),
+(10, '0123456T', 'Ava', 'Rodriguez', 'ava.rodriguez@example.com', '0890123456', 'IE29AIBK93115212345678'),
+(11, '1234567U', 'Mia', 'Lewis', 'mia.lewis@example.com', '0871234567', 'IE29ULSB93115212345678'),
+(12, '2345678U', 'Logan', 'Lee', 'logan.lee@example.com', '0862345678', 'IE29BOFI93115212345678'),
+(13, '3456789U', 'Ella', 'Walker', 'ella.walker@example.com', '0853456789', 'IE29AIBK93115212345678'),
+(14, '4567890U', 'Mateo', 'Hall', 'mateo.hall@example.com', '0834567890', 'IE29ULSB93115212345678'),
+(15, '5678901U', 'Scarlett', 'Young', 'scarlett.young@example.com', '0895678901', 'IE29BOFI93115212345678'),
+(16, '6789012U', 'Lucas', 'Scott', 'lucas.scott@example.com', '0876789012', 'IE29AIBK93115212345678'),
+(17, '7890123U', 'Aria', 'King', 'aria.king@example.com', '0867890123', 'IE29ULSB93115212345678'),
+(18, '8901234U', 'Benjamin', 'Adams', 'benjamin.adams@example.com', '0858901234', 'IE29BOFI93115212345678'),
+(19, '9012345U', 'Zoe', 'Wright', 'zoe.wright@example.com', '0839012345', 'IE29AIBK93115212345678'),
+(20, '0123456U', 'Hannah', 'Lopez', 'hannah.lopez@example.com', '0890123456', 'IE29ULSB93115212345678'),
+(21, '1234567V', 'Henry', 'Hill', 'henry.hill@example.com', '0871234567', 'IE29BOFI93115212345678'),
+(22, '2345678V', 'Penelope', 'Green', 'penelope.green@example.com', '0862345678', 'IE29AIBK93115212345678'),
+(23, '3456789V', 'Leo', 'Baker', 'leo.baker@example.com', '0853456789', 'IE29ULSB93115212345678'),
+(24, '4567890V', 'Grace', 'Allen', 'grace.allen@example.com', '0834567890', 'IE29BOFI93115212345678'),
+(25, '5678901V', 'Luna', 'Nelson', 'luna.nelson@example.com', '0895678901', 'IE29AIBK93115212345678'),
+(26, '6789012V', 'Jackson', 'Carter', 'jackson.carter@example.com', '0876789012', 'IE29ULSB93115212345678'),
+(27, '7890123V', 'Ellie', 'Perez', 'ellie.perez@example.com', '0867890123', 'IE29BOFI93115212345678'),
+(28, '8901234V', 'Mateo', 'Cooper', 'mateo.cooper@example.com', '0858901234', 'IE29ULSB93115212345678'),
+(29, '9012345V', 'Aurora', 'Ross', 'aurora.ross@example.com', '0839012345', 'IE29BOFI93115212345678'),
+(30, '0123456V', 'Lucy', 'Howard', 'lucy.howard@example.com', '0890123456', 'IE29AIBK93115212345678'),
+(31, '1234567W', 'Owen', 'Ward', 'owen.ward@example.com', '0871234567', 'IE29ULSB93115212345678');
+
+INSERT INTO loyaltyCard (fname, lname, email, empNum, registrationDate) VALUES
+('John', 'Doe', 'john.doe@example.com', 1, '2023-11-10'),
+('Alice', 'Smith', 'alice.smith@example.com', 2, '2023-11-12'),
+('David', 'Johnson', 'david.johnson@example.com', 3, '2023-11-15'),
+('Emma', 'Williams', 'emma.williams@example.com', 4, '2023-11-18'),
+('James', 'Brown', 'james.brown@example.com', 5, '2023-11-20'),
+('Olivia', 'Jones', 'olivia.jones@example.com', 6, '2023-11-22'),
+('Noah', 'Garcia', 'noah.garcia@example.com', 7, '2023-11-25'),
+('Sophia', 'Martinez', 'sophia.martinez@example.com', 8, '2023-11-27'),
+('Liam', 'Robinson', 'liam.robinson@example.com', 9, '2023-11-29'),
+('Ava', 'Clark', 'ava.clark@example.com', 10, '2023-12-01'),
+('Mia', 'Lewis', 'mia.lewis@example.com', 11, '2023-12-03'),
+('Logan', 'Lee', 'logan.lee@example.com', 4, '2023-12-05'),
+('Ella', 'Walker', 'ella.walker@example.com', 4, '2023-12-07'),
+('Mateo', 'Hall', 'mateo.hall@example.com', 14, '2023-12-10'),
+('Scarlett', 'Young', 'scarlett.young@example.com', 8, '2023-11-12'),
+('Lucas', 'Scott', 'lucas.scott@example.com', 8, '2023-11-15'),
+('Aria', 'King', 'aria.king@example.com', 8, '2023-11-18'),
+('Benjamin', 'Adams', 'benjamin.adams@example.com', 8, '2023-11-20'),
+('Zoe', 'Wright', 'zoe.wright@example.com', 9, '2023-11-22'),
+('Hannah', 'Lopez', 'hannah.lopez@example.com', 9, '2023-11-25'),
+('Henry', 'Hill', 'henry.hill@example.com', 9, '2023-11-27'),
+('Penelope', 'Green', 'penelope.green@example.com', 4, '2023-11-29'),
+('Leo', 'Baker', 'leo.baker@example.com', 4, '2023-11-30'),
+('Grace', 'Allen', 'grace.allen@example.com', 3, '2023-11-02'),
+('Luna', 'Nelson', 'luna.nelson@example.com', 4, '2023-11-05'),
+('Jackson', 'Carter', 'jackson.carter@example.com', 2, '2023-11-07'),
+('Ellie', 'Perez', 'ellie.perez@example.com', 4, '2023-11-10'),
+('Mateo', 'Cooper', 'mateo.cooper@example.com', 4, '2023-11-12'),
+('Aurora', 'Ross', 'aurora.ross@example.com', 4, '2023-11-15'),
+('Lucy', 'Howard', 'lucy.howard@example.com', 30, '2023-11-17');
+
+-- Additional entries for transactions
+INSERT INTO transactions (date, total, venueID, empNum, lcNum)
+VALUES
+    ('2023-08-01', 120.00, 5, 12, 3),
+    ('2022-12-15', 250.75, 3, 8, NULL),
+    ('2023-05-02', 60.50, 3, 5, 30),
+    ('2022-11-20', 370.99, 8, 19, NULL),
+    ('2023-01-10', 85.25, 2, 7, 14),
+    ('2022-09-05', 300.00, 6, 14, 13),
+    ('2023-04-18', 45.00, 4, 10, NULL),
+    ('2022-10-12', 180.50, 7, 17, 7),
+    ('2023-07-08', 95.75, 3, 8, NULL),
+    ('2022-12-01', 200.25, 5, 11, 22),
+    ('2023-09-15', 150.00, 4, 9, NULL),
+    ('2023-08-28', 100.00, 6, 14, 11),
+    ('2023-02-10', 180.00, 2, 7, NULL),
+    ('2022-07-05', 120.00, 1, 5, NULL),
+    ('2023-06-22', 250.00, 7, 17, NULL),
+    ('2022-11-05', 60.00, 3, 8, 4),
+    ('2023-03-18', 300.00, 5, 12, 1),
+    ('2022-10-01', 80.00, 8, 19, NULL),
+    ('2023-07-12', 140.00, 4, 10, 2),
+    ('2022-12-20', 210.00, 2, 15, 6);
+
+INSERT INTO paymentTypes (cash, card, giftcard, transNum)
+VALUES
+    (80.00, 20.00, 20.00, 1),      -- Total: 120.00
+    (0, 250.75, 0.00, 2),     -- Total: 250.75
+    (30.25, 0.00, 30.25, 3),       -- Total: 60.50
+    (0, 70.99, 300.00, 4),      -- Total: 370.99
+    (85.00, 0.25, 0.00, 5),       -- Total: 85.25
+    (120.00, 180.00, 0.00, 6),     -- Total: 300.00
+    (22.50, 22.50, 0.00, 7),       -- Total: 45.00
+    (100.00, 80.50, 0.00, 8),      -- Total: 180.50
+    (0, 95.75, 0.00, 9),       -- Total: 95.75
+    (100.00, 100.25, 0.00, 10),    -- Total: 200.25
+    (0.00, 120.00, 30.00, 11),     -- Total: 150.00 -- giftcard entries
+    (50.00, 50.00, 0.00, 12),      -- Total: 100.00
+    (90.00, 90.00, 0.00, 13),      -- Total: 180.00
+    (60.00, 60.00, 0.00, 14),      -- Total: 120.00
+    (130.00, 120.00, 0.00, 15),    -- Total: 250.00
+    (30.00, 30.00, 0.00, 16),      -- Total: 60.00
+    (150.00, 150.00, 0.00, 17),    -- Total: 300.00
+    (40.00, 40.00, 0.00, 18),      -- Total: 80.00
+    (70.00, 70.00, 0.00, 19),      -- Total: 140.00
+    (110.00, 100.00, 0.00, 20);    -- Total: 210.00;
+    
+-- Additional entries for transactions
+INSERT INTO transactions (date, total, venueID, empNum, lcNum)
+VALUES
+    ('2023-05-10', 120.00, 2, 12, 3),
+    ('2023-12-25', 250.75, 5, 8, NULL),
+    ('2023-06-02', 60.50, 2, 5, 30),
+    ('2023-11-30', 370.99, 5, 19, NULL),
+    ('2023-01-15', 85.25, 2, 7, 14),
+    ('2023-09-10', 300.00, 2, 14, 13),
+    ('2023-04-28', 45.00, 2, 10, NULL),
+    ('2023-10-22', 180.50, 5, 17, 7),
+    ('2023-07-18', 95.75, 8, 8, NULL),
+    ('2023-12-05', 200.25, 5, 11, 22),
+    ('2023-09-25', 150.00, 2, 9, NULL),
+    ('2023-08-10', 100.00, 5, 14, 11),
+    ('2023-02-15', 180.00, 2, 7, NULL),
+    ('2023-07-15', 120.00, 5, 5, NULL),
+    ('2023-06-30', 250.00, 2, 17, NULL),
+    ('2023-11-10', 60.00, 5, 8, 4),
+    ('2023-03-25', 300.00, 3, 12, 1),
+    ('2023-10-10', 80.00, 5, 19, NULL),
+    ('2023-08-12', 130.00, 8, 10, 2),
+    ('2023-12-28', 210.00, 2, 15, 6);
+    
+INSERT INTO paymentTypes (cash, card, giftcard, transNum)
+VALUES
+    (80.00, 20.00, 20.00, 21),     -- Total: 120.00
+    (0.00, 250.75, 0.00, 22),    -- Total: 250.75
+    (0.00, 0.00, 60.50, 23),       -- Total: 60.50
+    (0.00, 370.99, 0.00, 24),      -- Total: 370.99
+    (0.00, 85.25, 0.00, 25),       -- Total: 85.25
+    (300.00, 0.00, 0.00, 26),     -- Total: 300.00
+    (22.50, 22.50, 0.00, 27),       -- Total: 45.00
+    (0.00, 180.50, 0.00, 28),      -- Total: 180.50
+    (0, 95.75, 0.00, 29),       -- Total: 95.75
+    (200.25, 0.00, 0.00, 30),     -- Total: 200.25
+    (90.00, 60.00, 0.00, 31),       -- Total: 150.00 
+    (50.00, 50.00, 0.00, 32),       -- Total: 100.00
+    (90.00, 90.00, 0.00, 33),       -- Total: 180.00
+    (60.00, 60.00, 0.00, 34),       -- Total: 120.00
+    (130.00, 120.00, 0.00, 35),     -- Total: 250.00
+    (30.00, 30.00, 0.00, 36),       -- Total: 60.00
+    (150.00, 150.00, 0.00, 37),     -- Total: 300.00
+    (40.00, 40.00, 0.00, 38),       -- Total: 80.00
+    (130.00, 0.00, 0.00, 39),       -- Total: 130.00
+    (110.00, 100.00, 0.00, 40);     -- Total: 210.00;
+    
+INSERT INTO transactions (date, total, venueID, empNum, lcNum)
+VALUES
+    ('2023-05-10', 120.00, 1, 12, 3),
+    ('2023-12-25', 250.75, 3, 8, NULL),
+    ('2023-06-02', 60.50, 1, 5, 30),
+    ('2023-11-30', 370.99, 3, 19, NULL),
+    ('2023-01-15', 85.25, 1, 7, 14),
+    ('2023-09-10', 300.00, 1, 14, 13),
+    ('2023-04-28', 45.00, 1, 10, NULL),
+    ('2023-10-22', 180.50, 3, 17, 7),
+    ('2023-07-18', 95.75, 1, 8, NULL),
+    ('2023-12-05', 200.25, 3, 11, 22),
+    ('2023-09-25', 150.00, 1, 9, NULL),
+    ('2023-08-10', 100.00, 3, 14, 11),
+    ('2023-02-15', 180.00, 1, 7, NULL),
+    ('2023-07-15', 120.00, 3, 5, NULL),
+    ('2023-06-30', 250.00, 1, 17, NULL),
+    ('2023-11-10', 60.00, 3, 8, 4),
+    ('2023-03-25', 300.00, 1, 12, 1),
+    ('2023-10-10', 80.00, 3, 19, NULL),
+    ('2023-08-12', 130.00, 1, 10, 2),
+    ('2023-12-28', 210.00, 1, 15, 6);
+    
+INSERT INTO paymentTypes (cash, card, giftcard, transNum)
+VALUES
+    (80.00, 20.00, 20.00, 41),     -- Total: 120.00
+    (0.00, 250.75, 0.00, 42),    -- Total: 250.75
+    (0.00, 0.00, 60.50, 43),       -- Total: 60.50
+    (0.00, 370.99, 0.00, 44),      -- Total: 370.99
+    (0.00, 85.25, 0.00, 45),       -- Total: 85.25
+    (300.00, 0.00, 0.00, 46),     -- Total: 300.00
+    (22.50, 22.50, 0.00, 47),       -- Total: 45.00
+    (0.00, 180.50, 0.00, 48),      -- Total: 180.50
+    (0, 95.75, 0.00, 49),       -- Total: 95.75
+    (200.25, 0.00, 0.00, 50),     -- Total: 200.25
+    (90.00, 60.00, 0.00, 51),       -- Total: 150.00 
+    (50.00, 50.00, 0.00, 52),       -- Total: 100.00
+    (90.00, 90.00, 0.00, 53),       -- Total: 180.00
+    (60.00, 60.00, 0.00, 54),       -- Total: 120.00
+    (130.00, 120.00, 0.00, 55),     -- Total: 250.00
+    (30.00, 30.00, 0.00, 56),       -- Total: 60.00
+    (150.00, 150.00, 0.00, 57),     -- Total: 300.00
+    (40.00, 40.00, 0.00, 58),       -- Total: 80.00
+    (130.00, 0.00, 0.00, 59),       -- Total: 130.00
+    (110.00, 100.00, 0.00, 60);     -- Total: 210.00;
+    
+INSERT INTO transactions (date, total, venueID, empNum, lcNum)
+VALUES
+    ('2023-05-10', 120.00, 1, 12, 3),
+    ('2023-12-25', 250.75, 3, 8, NULL),
+    ('2023-06-02', 60.50, 1, 5, 30),
+    ('2023-11-30', 370.99, 3, 19, NULL),
+    ('2023-01-15', 85.25, 1, 7, 14),
+    ('2023-09-10', 300.00, 1, 14, 13),
+    ('2023-04-28', 45.00, 2, 10, NULL),
+    ('2023-10-22', 180.50, 3, 17, 7),
+    ('2023-07-18', 95.75, 2, 8, NULL),
+    ('2023-12-05', 200.25, 3, 11, 22),
+    ('2023-09-25', 150.00, 2, 9, NULL),
+    ('2023-08-10', 100.00, 3, 14, 11),
+    ('2023-02-15', 180.00, 1, 7, NULL),
+    ('2023-07-15', 120.00, 3, 5, NULL),
+    ('2023-06-30', 250.00, 1, 17, NULL),
+    ('2023-11-10', 60.00, 3, 8, 4),
+    ('2023-03-25', 300.00, 1, 12, 1),
+    ('2023-10-10', 80.00, 3, 19, NULL),
+    ('2023-08-12', 130.00, 1, 10, 2),
+    ('2023-12-28', 210.00, 1, 15, 6);
+    
+INSERT INTO paymentTypes (cash, card, giftcard, transNum)
+VALUES
+    (80.00, 20.00, 20.00, 61),     -- Total: 120.00
+    (0.00, 250.75, 0.00, 62),    -- Total: 250.75
+    (0.00, 0.00, 60.50, 63),       -- Total: 60.50
+    (0.00, 370.99, 0.00, 64),      -- Total: 370.99
+    (0.00, 85.25, 0.00, 65),       -- Total: 85.25
+    (300.00, 0.00, 0.00, 66),     -- Total: 300.00
+    (22.50, 22.50, 0.00, 67),       -- Total: 45.00
+    (0.00, 180.50, 0.00, 68),      -- Total: 180.50
+    (0, 95.75, 0.00, 69),       -- Total: 95.75
+    (200.25, 0.00, 0.00, 70),     -- Total: 200.25
+    (90.00, 60.00, 0.00, 71),       -- Total: 150.00 
+    (50.00, 50.00, 0.00, 72),       -- Total: 100.00
+    (90.00, 90.00, 0.00, 73),       -- Total: 180.00
+    (60.00, 60.00, 0.00, 74),       -- Total: 120.00
+    (130.00, 120.00, 0.00, 75),     -- Total: 250.00
+    (30.00, 30.00, 0.00, 76),       -- Total: 60.00
+    (150.00, 150.00, 0.00, 77),     -- Total: 300.00
+    (40.00, 40.00, 0.00, 78),       -- Total: 80.00
+    (130.00, 0.00, 0.00, 79),       -- Total: 130.00
+    (110.00, 100.00, 0.00, 80);     -- Total: 210.00;
+    
+INSERT INTO GiftCard (transNum, amount) VALUES
+    (11, 150.00),
+    (12, 100.00),
+    (13, 180.00),
+    (14, 120.00),
+    (15, 250.00),
+    (16, 60.00),
+    (17, 300.00),
+    (18, 80.00),
+    (19, 130.00),
+    (20, 210.00);
+    
+INSERT INTO transactionDetails (productID, transID, prodQuantity) VALUES
+-- First 10 entries
+(10000, 1, 1),
+(10003, 1, 3),
+(10006, 1, 3),
+(10009, 1, 3),
+(10001, 2, 2),
+(10004, 2, 3),
+(10007, 2, 3),
+(10010, 2, 1),
+(10002, 3, 2),
+(10005, 3, 3),
+(10008, 3, 3),
+(10011, 3, 1),
+(10003, 4, 1),
+(10006, 4, 3),
+(10009, 4, 3),
+(10012, 4, 3),
+(10004, 5, 2),
+(10007, 5, 3),
+(10010, 5, 3),
+(10013, 5, 1),
+(10005, 6, 1),
+(10008, 6, 3),
+(10011, 6, 3),
+(10014, 6, 2),
+(10006, 7, 1),
+(10009, 7, 3),
+(10012, 7, 3),
+(10015, 7, 3),
+(10007, 8, 2),
+(10010, 8, 3),
+(10013, 8, 3),
+(10016, 8, 1),
+(10008, 9, 2),
+(10011, 9, 3),
+(10014, 9, 3),
+(10017, 9, 1),
+(10017, 2, 1),
+(10020, 2, 2),
+(10012, 3, 3),
+(10015, 3, 1),
+(10018, 3, 2),
+(10021, 3, 1),
+(10013, 4, 2),
+(10016, 4, 1),
+(10019, 4, 2),
+(10022, 4, 3),
+(10014, 5, 2),
+(10017, 5, 3),
+(10020, 5, 1),
+(10023, 5, 2),
+(10015, 6, 1),
+(10018, 6, 2),
+(10021, 6, 2),
+(10024, 6, 3),
+(10020, 1, 1),
+(10023, 1, 3),
+(10026, 1, 1),
+(10029, 1, 2),
+(10021, 2, 2),
+(10024, 2, 1),
+(10027, 2, 2),
+(10030, 2, 1),
+(10022, 3, 3),
+(10025, 3, 1),
+(10028, 3, 3),
+(10031, 3, 1),
+(10023, 4, 2),
+(10026, 4, 1),
+(10029, 4, 3),
+(10032, 4, 2),
+(10024, 5, 2),
+(10027, 5, 3),
+(10030, 5, 1),
+(10033, 5, 2),
+(10025, 6, 1),
+(10028, 6, 2),
+(10031, 6, 2),
+(10034, 6, 3),
+(10026, 7, 2),
+(10029, 7, 3),
+(10032, 7, 2),
+(10035, 7, 1),
+(10027, 8, 2),
+(10032, 10, 3),
+(10035, 10, 1),
+(10038, 10, 2);
+
+INSERT INTO heldStock VALUES
+(10000, 1, 5),
+(10003, 1, 20),
+(10006, 1, 35),
+(10009, 1, 40),
+(10001, 2, 10),
+(10004, 2, 25),
+(10007, 2, 30),
+(10010, 2, 5),
+(10002, 3, 15),
+(10005, 3, 30),
+(10008, 3, 35),
+(10011, 3, 10),
+(10003, 4, 5),
+(10006, 4, 20),
+(10009, 4, 35),
+(10012, 4, 40),
+(10004, 5, 10),
+(10007, 5, 25),
+(10010, 5, 30),
+(10013, 5, 5),
+(10005, 6, 15),
+(10008, 6, 30),
+(10011, 6, 35),
+(10014, 6, 10),
+(10006, 7, 5),
+(10009, 7, 20),
+(10012, 7, 35),
+(10015, 7, 40),
+(10007, 8, 10),
+(10010, 8, 25),
+(10013, 8, 30),
+(10016, 8, 5),
+(10010, 1, 10),
+(10013, 1, 25),
+(10016, 1, 40),
+(10019, 1, 5),
+(10011, 2, 15),
+(10014, 2, 30),
+(10017, 2, 35),
+(10020, 2, 10),
+(10012, 3, 5),
+(10015, 3, 20),
+(10018, 3, 25),
+(10021, 3, 40),
+(10013, 4, 10),
+(10016, 4, 25),
+(10019, 4, 30),
+(10022, 4, 5),
+(10014, 5, 15),
+(10017, 5, 30),
+(10020, 5, 35),
+(10023, 5, 10),
+(10015, 6, 5),
+(10018, 6, 20),
+(10021, 6, 20),
+(10024, 6, 35),
+(10016, 7, 15),
+(10019, 7, 5),
+(10022, 7, 25),
+(10025, 7, 40),
+(10017, 8, 15),
+(10020, 8, 30),
+(10023, 8, 35),
+(10026, 8, 10),
+(10020, 1, 5),
+(10023, 1, 20),
+(10026, 1, 35),
+(10029, 1, 40),
+(10021, 2, 10),
+(10024, 2, 25),
+(10027, 2, 30),
+(10030, 2, 5),
+(10022, 3, 15),
+(10025, 3, 30),
+(10028, 3, 35),
+(10031, 3, 10),
+(10023, 4, 5),
+(10026, 4, 20),
+(10029, 4, 35),
+(10032, 4, 40),
+(10024, 5, 10),
+(10027, 5, 25),
+(10030, 5, 30),
+(10033, 5, 5),
+(10025, 6, 15),
+(10028, 6, 30),
+(10031, 6, 35),
+(10034, 6, 10),
+(10026, 7, 5),
+(10029, 7, 20),
+(10032, 7, 35),
+(10035, 7, 40),
+(10027, 8, 10),
+(10030, 8, 25),
+(10033, 8, 30),
+(10036, 8, 5);
+
+-- -----------------------------------------------------
+-- 3. create indexes
+-- -----------------------------------------------------
+
+-- Index for transactions table
+-- search for date and venue specific receipts
+-- very commonly used for individuals venues search for 
+-- specific transactios
+CREATE INDEX idx_transactions_date_venue ON transactions (date, venueID);
+
+-- Index for clothes table
+-- clothes are regularly search depending on gender
+CREATE INDEX idx_clothes_gender ON clothes (gender);
+
+-- Index for employee table
+-- employees are regulaty searched dependant on venue
+-- either for paying, updating hours
+CREATE INDEX idx_employee_venue ON employee (venueID);
+
+-- Index for loyaltyCard table
+-- as a main KPI of the business to keep loyal customer
+-- employees are searched for there number of loyaltyCards
+-- they have signed up regularly
+CREATE INDEX idx_loyaltyCard_employee ON loyaltyCard (empNum);
+
+
+-- -----------------------------------------------------
+-- 5. create views
+-- -----------------------------------------------------
+
+-- -----------------------------------------------------
+-- Ranking venue with the top sales for 2023
+
+-- FOR SCRIPT 2 example of order by, aggregate functions, 
+-- outer joins (to include venues even if there are no sales),
+-- group by, date fuctions
+-- -----------------------------------------------------
+
+CREATE OR REPLACE VIEW topVenueSales AS
+SELECT 
+RANK() OVER (ORDER BY SUM(total) DESC) AS "Rank", 
+venue.venueID,
+venue.venueName AS "Venue", 
+COUNT(total) AS "No of Sales",
+ROUND(AVG(total),2) AS "AVR Sales", 
+ROUND(MAX(total),2) AS "Largest Sale",  
+ROUND(sum(total),2) AS "Total Sales" 
+FROM transactions
+	LEFT JOIN venue ON venue.venueID=transactions.venueID 
+WHERE EXTRACT(YEAR FROM date) = 2023 
+GROUP BY transactions.venueID
+ORDER BY SUM(total) DESC; 
+
+-- -----------------------------------------------------
+-- Search from transactions detail
+-- commonly used if a customer can't find a receipt or 
+-- if there is an issue with the payment
+
+-- FOR SCRIPT 2 example of multi-table join, order by,
+-- date function
+-- -----------------------------------------------------
+
+CREATE OR REPLACE VIEW transaction_details_view AS
+SELECT
+    t.transNum,
+    t.date,
+    t.total,
+    t.venueID,
+    t.empNum,
+    t.lcNum,
+    td.productID,
+    p.productName,
+    td.prodQuantity,
+    pt.cash,
+    pt.card,
+    pt.giftcard
+FROM transactions t
+	JOIN transactionDetails td ON t.transNum = td.transID
+	JOIN paymentTypes pt ON t.transNum = pt.transNum
+	JOIN product p ON p.productID = td.productID
+ORDER BY t.date DESC;
+
+-- -----------------------------------------------------
+-- View to see number of LoyaltyCards signed up in venues 
+-- for past year. This is a KPI used to drive customer loyalty
+-- within venues. 
+
+-- FOR SCRIPT 2 example of multi-table join, where between,
+-- group by
+-- -----------------------------------------------------
+CREATE OR REPLACE VIEW YearlyLoyaltySignUp AS 
+SELECT 
+  venue.venueID,
+  COUNT(loyaltyCard.empNum) AS NoOfSignUps 
+FROM employee
+	JOIN venue ON employee.venueID = venue.venueID 
+	JOIN loyaltyCard on loyaltyCard.empNum=employee.empNum
+WHERE registrationDate BETWEEN CURDATE() - INTERVAL 1 YEAR AND CURDATE()
+GROUP BY venue.venueid;
+
+-- -----------------------------------------------------
+-- View to rank the employee in each venue on loyalty card
+-- sign up. used as a staff KPI to measure preformance,
+-- help with future staff training 
+
+-- FOR SCRIPT 2 example of aggregated function, 
+-- multi-table join, where between, group by
+-- -----------------------------------------------------
+CREATE OR REPLACE VIEW RankedEmpLoyaltySignUps AS 
+SELECT 
+	employee.empNum, 
+    CONCAT(employeeDetails.fname, ' ', employeeDetails.lname) AS Name,
+    COUNT(loyaltyCard.empNum) AS NoOfSignUps,
+    venueName,
+    ROW_NUMBER() OVER (PARTITION BY venue.venueID ORDER BY COUNT(loyaltyCard.empNum) DESC) AS RowNum
+FROM loyaltyCard
+    JOIN employee ON employee.empNum = loyaltyCard.empNum
+    JOIN employeeDetails ON employee.empNum = employeeDetails.empNum
+    JOIN venue ON venue.venueID = employee.venueID
+WHERE registrationDate BETWEEN CURDATE() - INTERVAL 1 YEAR AND CURDATE()
+GROUP BY venueName, empNum;
+
+-- -----------------------------------------------------
+-- 6. create users and grant appropriate privileges to those users.
+-- -----------------------------------------------------
+
+DROP USER IF EXISTS 'Manager';
+create user Manager identified by 'secret'; 
+grant insert, update, delete, select on employee to Manager;
+grant insert, update, delete, select on partTime to Manager;
+grant insert, update, delete, select on fullTime to Manager;
+grant select on retail.* to Manager;
+
+DROP USER IF EXISTS 'Supervisor';
+create user Supervisor identified by 'secret'; 
+grant insert, update, select on partTime to Supervisor;
+grant insert, update, select on fullTime to Supervisor;
+grant select on product to Supervisor;
+grant select on heldStock to Supervisor;
+grant select on clothes to Supervisor;
+grant select on transaction_details_view to Supervisor;
+
+
+DROP USER IF EXISTS 'SalesAssistant';
+create user SalesAssistant identified by 'secret'; 
+grant select on retail.product to SalesAssistant;
+grant select on retail.clothes to SalesAssistant;
+grant select on retail.shoes to SalesAssistant;
+
+
+COMMIT;

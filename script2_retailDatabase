@@ -1,0 +1,243 @@
+-- -----------------------------------------------------
+-- SCRIPT 2
+-- -----------------------------------------------------
+
+use retail;
+
+-- -----------------------------------------------------
+-- change all products names for better categorisation
+-- resulting in easier searches for specific products
+
+-- example of WHERE LIKE to find products
+-- -----------------------------------------------------
+
+UPDATE product
+SET productName = REPLACE(productName, 'T-Shirt', 'Tee')
+WHERE productName LIKE '%T-Shirt%';
+
+-- -----------------------------------------------------
+-- productID search for specific product in specific store
+-- using info about venueID, size, and product name
+-- this allows to find specific product to potentially transfer
+-- to other stroes
+
+-- example of multi-table join, where in, where like
+-- -----------------------------------------------------
+
+SELECT 
+product.productID, productName AS 'Product Name', size, colour, quantity, venueName
+FROM product
+ JOIN heldStock ON heldStock.productID=product.productID -- multi-table JOINs
+ JOIN venue on venue.venueID=heldStock.venueID -- multi-table JOINs
+WHERE heldStock.productID BETWEEN 10000 AND 10090 -- WHERE….BETWEEN
+AND size="M" 
+AND heldStock.venueID IN (1, 5, 6)
+AND productName LIKE '%TEE%'; -- WHERE….LIKE
+
+-- -----------------------------------------------------
+-- Looking for products that have low quantities 
+-- in the companys top selling store 
+
+-- example of where in, sub-query, multi-table join,
+-- where between, where like
+-- -----------------------------------------------------
+
+SELECT productID, productName, size, colour
+FROM product
+WHERE productID IN (
+    SELECT DISTINCT productID
+    FROM heldStock
+		JOIN venue ON venue.venueID = heldstock.venueID
+    WHERE quantity BETWEEN 0 and 5
+    AND venueName LIKE '%Galway%'
+);
+
+-- -----------------------------------------------------
+-- Shows all ladies stock held in Galway store
+
+-- example of multi-table join, outer join (for name
+-- search of all venues), where like, where in
+-- -----------------------------------------------------
+
+SELECT productName, colour, size, salePrice, quantity
+FROM clothes
+	JOIN product ON clothes.productID = product.productID -- multi-table JOINs
+    JOIN heldStock ON heldStock.productID = clothes.productID -- multi-table JOINs
+    LEFT JOIN venue on venue.venueID=heldStock.venueID
+WHERE gender = "Ladies" 
+AND venueName LIKE "%Galway"
+AND size IN ('XS', 'S')
+AND productName LIKE "%jean%";
+
+-- -----------------------------------------------------
+-- To find the amount of employees in each venue
+-- excluding the manager
+
+-- example of aggregated functions, sub-query,
+-- order by
+-- -----------------------------------------------------
+
+SELECT venueName, totalEmployees
+FROM (
+    SELECT venueName, COUNT(empNum) AS totalEmployees
+    FROM employee
+    LEFT JOIN venue ON venue.venueID = employee.venueID
+    WHERE empNum != employee.managerEmpNum 
+    GROUP BY employee.venueID
+) AS employeeCount
+ORDER BY totalEmployees DESC;
+
+-- -----------------------------------------------------
+-- To find the employe details and holiday allowances
+-- for all employees (both fulltime and partTime) in a 
+-- specific venue
+
+-- examples of multi-table join, outer join (to show
+-- both part time and full time), where like
+-- -----------------------------------------------------
+
+SELECT 
+	employee.empNum, 
+    concat(fname, ' ',lname) AS Name, 
+    contractHrs, employeeTitle, rateOfPay, hoursWorked, hoursOwed, daysOwed
+FROM employee
+JOIN employeeDetails ON employeeDetails.empNum = employee.empNum
+JOIN venue ON venue.venueID=employee.venueID
+	LEFT JOIN partTime ON partTime.empNum = employee.empNum 
+	LEFT JOIN fullTime ON fullTime.empNum = employee.empNum 
+WHERE venueName LIKE "%GALWAY%";
+
+-- DEMONSTRATION: update_hoursWorked_trigger 
+-- trigger to work out holiday hours for part time staff
+-- if you execute the below statement 
+-- and execute the above select statement after,
+-- watch as the holiday hours are calculated
+UPDATE partTime
+SET hoursWorked = 10
+WHERE empNum = 3;
+
+-- -----------------------------------------------------
+-- Shows all the employees, there related venue,
+-- and the manager they work under
+
+-- example of sub-query, multi-table join, outer join 
+-- (include possible new venue with no staff)
+-- -----------------------------------------------------
+
+SELECT 
+employee.empNum, 
+CONCAT(fname,' ',lname) AS 'Employee Name',
+venueName,
+(SELECT CONCAT(fname, ' ', lname) 
+    FROM employeeDetails WHERE empNum = employee.managerEmpNum) AS 'Manager Name'
+FROM employee
+	JOIN employeeDetails on employeeDetails.empNum=employee.empNum
+    LEFT JOIN venue ON venue.venueID=employee.venueID
+where employee.managerEmpNum IS NOT NULL;
+
+-- -----------------------------------------------------
+-- Search for products, specifically Tee's, where the 
+-- max price is equal to or under 20 euro
+
+-- example of aggregate function, where like, group by,
+-- where having
+-- -----------------------------------------------------
+
+SELECT clothes.gender, product.productName, Max(product.salePrice) AS maxSalePrice
+FROM product
+JOIN clothes ON product.productID = clothes.productID
+WHERE productName LIKE '%Tee%'
+GROUP BY clothes.gender, product.productName
+HAVING maxSalePrice <= 20.00;
+
+-- -----------------------------------------------------
+-- Rank top employee for loyalty card sign up for the last month
+
+-- example of order by, aggregate functions,
+-- outer join (to include all employee, even if no sign ups),
+-- date function, multi-table join, group by
+-- -----------------------------------------------------
+
+SELECT 
+  RANK() OVER (ORDER BY COUNT(loyaltyCard.empNum) DESC) AS "Rank", 
+  employee.empNum AS 'Emp Num', 
+  CONCAT(employeeDetails.fname, ' ', employeeDetails.lname) AS "Name", 
+  COUNT(loyaltyCard.empNum) AS "No of Sign Up",
+  venueName AS 'Venue Name'
+FROM employee
+LEFT JOIN loyaltyCard ON employee.empNum = loyaltyCard.empNum 
+JOIN employeeDetails ON employee.empNum = employeeDetails.empNum
+JOIN venue ON employee.venueID = venue.venueID 
+WHERE EXTRACT(YEAR_MONTH FROM loyaltyCard.registrationDate) = EXTRACT(YEAR_MONTH FROM CURDATE() - INTERVAL 1 MONTH) 
+   OR loyaltyCard.empNum IS NULL
+GROUP BY employee.empNum;
+
+
+-- top employee loyalty card sales for 2023 
+SELECT 
+  RANK() OVER (ORDER BY count(employee.empNum) DESC) AS "Rank", -- Window function
+employee.empNum AS 'Emp Num', 
+ CONCAT(employeeDetails.fname, ' ', employeeDetails.lname) AS "Name", 
+  COUNT(employee.empNum) AS "No of Sign Up", -- Aggregate function
+  venueName
+FROM loyaltyCard
+JOIN employee ON employee.empNum = loyaltyCard.empNum 
+JOIN employeeDetails on employee.empNum=employeeDetails.empNum
+JOIN venue ON employee.venueID = venue.venueID 
+WHERE EXTRACT(YEAR FROM registrationDate) = 2023 -- Date functions
+GROUP BY loyaltyCard.empNum;
+
+-- -----------------------------------------------------
+-- The top venues for loyalty card sign ups are ranked 
+-- each year.
+-- The employee with the highest loyalty card (taken from
+-- view in script 1) sign up within that venue are rewarded. 
+-- This is a KPI on staff proformance within venues and 
+-- an incentiveused to push loyalty card sales
+
+-- example of aggregate functions, multi-table joins,
+-- group by, date function
+-- -----------------------------------------------------
+
+SELECT 
+  RANK() OVER (ORDER BY COUNT(employee.empNum) DESC) AS "Rank",
+  venue.venueName,
+  COUNT(employee.empNum) AS "No of Sign Up", 
+  RankedEmpLoyaltySignUps.Name,
+  RankedEmpLoyaltySignUps.NoOfSignUps
+FROM employee
+	JOIN venue ON employee.venueID = venue.venueID 
+    JOIN employeeDetails ON employee.empNum = employeeDetails.empNum
+    JOIN loyaltyCard ON loyaltyCard.empNum=employee.empNum
+    JOIN RankedEmpLoyaltySignUps ON RankedEmpLoyaltySignUps.venueName=venue.venueName
+WHERE RowNum = 1 and EXTRACT(YEAR FROM registrationDate) = 2023 
+GROUP BY venue.venueName, RankedEmpLoyaltySignUps.Name, RankedEmpLoyaltySignUps.NoOfSignUps;
+
+-- -----------------------------------------------------
+-- To show the number of transactions in each venue and
+-- the number of loyatycards signed up in each venue 
+-- in the past year (from current date)
+-- This gives conversion pecentage of loyaltycard sign ups
+-- per transactions and is used as a KPI for employes in
+-- specific venues used as a KPI for venues
+
+-- example of aggregate function, outer joins (to show
+-- all venues even with no transactions or loyalty card
+-- sign ups), where between, date functions, group by,
+-- order by
+-- -----------------------------------------------------
+
+SELECT 
+	transactions.venueID, 
+    venueName AS 'Venue', 
+    COUNT(transNum) AS "No. of transactions", 
+    YearlyLoyaltySignUp.NoOfSignUps, -- view created in script 1
+    ROUND((YearlyLoyaltySignUp.NoOfSignUps / COUNT(transNum)),2) * 100 AS "Percentage of Sign-Ups"
+from transactions
+	LEFT JOIN venue ON venue.venueID = transactions.venueID -- OUTER JOIN
+    LEFT JOIN YearlyLoyaltySignUp ON venue.venueID = YearlyLoyaltySignUp.venueID-- OUTER JOIN
+WHERE transactions.date BETWEEN CURDATE() - INTERVAL 1 YEAR AND CURDATE()
+GROUP BY transactions.venueID
+ORDER BY ROUND((YearlyLoyaltySignUp.NoOfSignUps / COUNT(transNum)),2) DESC;
+
+
